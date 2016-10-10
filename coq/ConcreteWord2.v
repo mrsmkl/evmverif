@@ -165,75 +165,6 @@ eassumption.
         case_eq (x ?= y)%int256; congruence.
       Qed.
 
-(*
-      Definition t := W.t.
-      Definition eq (a b:t) := (a=b).
-      Arguments eq /.
-
-      Definition lt a b := is_true (word_smaller a b).
-      Arguments lt /.
-
-
-      Lemma eq_refl : forall x : t, eq x x.
-      Proof.
-        unfold eq.
-        auto.
-      Qed.
-
-      Lemma eq_sym : forall x y : t, eq x y -> eq y x.
-      Proof.
-        unfold eq.
-        auto.
-      Qed.
-
-      Lemma eq_trans : forall x y z : t, eq x y -> eq y z -> eq x z.
-      Proof.
-        unfold eq.
-        congruence.
-      Qed.
-
-      Lemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
-      Proof.
-        intros x y z.
-        unfold lt.
-        unfold word_smaller.
-        rewrite !ZnZ.spec_compare.
-        case_eq (ZnZ.to_Z x ?= ZnZ.to_Z y)%Z.
-        intro.
-        setoid_rewrite H.
-        congruence.
-        intro.
-        setoid_rewrite H.
-        case_eq (ZnZ.to_Z y ?= ZnZ.to_Z z)%Z.
-        intro.
-        setoid_rewrite H0.
-        congruence.
-        intro.
-        setoid_rewrite H0.
-        intros _ _.
-        erewrite (Zcompare_Lt_trans); auto; eassumption.
-        intro.
-        setoid_rewrite H0;congruence.
-        intro.
-        setoid_rewrite H;congruence.
-      Qed.
-
-      Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
-      Proof.
-        unfold t.
-        intros x y.
-        unfold lt; unfold eq.
-        unfold word_smaller.
-        simpl.
-        Require Import Int256.
-        case_eq (compare256 x y); try congruence.
-rewrite !spec_compare.
-        intros H _.
-Search ((_ ?= _)%Z = Lt).
-elim (Z.compare_lt_iff (phi x) (phi y));intros.
-      Qed.
-*)
-
       Definition compare : forall x y : t, Compare lt eq x y.
       Proof.
         intros x y.
@@ -301,33 +232,6 @@ elim (Z.compare_lt_iff (phi x) (phi y));intros.
 
 Require Int8.
 
-(* Get bits
-  Fixpoint do_shiftr w n := match n with
-   | O => w
-   | S n => shiftr (do_shiftr w n)
-  end.
-
-  Fixpoint do_shiftl w n := match n with
-   | O => w
-   | S n => shiftl (do_shiftl w n)
-  end.
-
-Fixpoint word_to_bits w n := match n with
- | O => nil
- | S n => firstr w :: word_to_bits (shiftr w) n
-end.
-
-Fixpoint bits_to_word lst := match lst with
- | nil => On
- | D0::tl => shiftl (bits_to_word tl)
- | D1::tl => In + shiftl (bits_to_word tl)
-end.
-
-Lemma word_and_bits : forall lst, word_to_bits (bits_to_word lst) 256 = lst.
-intros.
-induction lst.
-simpl.
-*)
 Definition split_word n w := w / phi_inv (2^(Z.of_nat n)).
 
 Definition combine_word n uv := (fst uv)*(phi_inv (2^(Z.of_nat n))) + (snd uv).
@@ -596,50 +500,7 @@ rewrite z2pow8; unfold Z2pow8.
 apply power_gt_0.
 Qed.
 
-(*
-Lemma split_add : forall n m w,
- fst (split_word n (fst (split_word m w))) = fst (split_word (n+m) w).
-intros.
-unfold split_word.
-unfold div256.
 
-rewrite (surjective_pairing (Z.div_eucl (phi w) (phi (phi_inv (2 ^ Z.of_nat m))))).
-simpl.
-rewrite (surjective_pairing (Z.div_eucl (phi w) (phi (phi_inv (2 ^ Z.of_nat (n + m)))))).
-simpl.
-rewrite (surjective_pairing (Z.div_eucl
-       (phi (phi_inv (fst (Z.div_eucl (phi w) (phi (phi_inv (2 ^ Z.of_nat m)))))))
-       (phi (phi_inv (2 ^ Z.of_nat n))))); simpl.
-rewrite !div_eucl_fst.
-
-Check spec_div_nolet.
-
-rewrite !phi_phi_inv.
-
-elim (spec_div_nolet (fst (w / phi_inv (2 ^ Z.of_nat m))) (phi_inv (2 ^ Z.of_nat n))); intros.
-elim (spec_div_nolet w (phi_inv (2 ^ Z.of_nat m))); intros.
-elim (spec_div_nolet w (phi_inv (2 ^ Z.of_nat (n+m)))); intros.
-unfold div256.
-
-
-pose (Z.div_eucl (phi w) (phi (phi_inv (2 ^ Z.of_nat m)))).
-replace (Z.div_eucl (phi w) (phi (phi_inv (2 ^ Z.of_nat m)))) with p; trivial.
-rewrite (surjective_pairing p); simpl.
-pose (Z.div_eucl (phi (phi_inv (fst p))) (phi (phi_inv (2 ^ Z.of_nat n)))).
-replace (Z.div_eucl (phi (phi_inv (fst p))) (phi (phi_inv (2 ^ Z.of_nat n)))) with p0; trivial.
-rewrite (surjective_pairing p0); simpl.
-
-pose (Z.div_eucl (phi w) (phi (phi_inv (2 ^ Z.of_nat (n + m))))).
-replace (Z.div_eucl (phi w) (phi (phi_inv (2 ^ Z.of_nat (n + m))))) with p1; trivial.
-rewrite (surjective_pairing p1); simpl.
-apply phi_eq_lemma.
-Check phi_phi_inv.
-setoid_rewrite (surjective_pairing (Z.div_eucl (phi w) (phi (phi_inv (2 ^ Z.of_nat m))))) in p.
-assert (p = p0).
-apply phi_eq_lemma.
-
-Z_div_mod_nolet.
-*)
 
 Lemma Zdiv_Z2pow8 : forall a n m,
  (a / 2^(Z.of_nat n) / 2^(Z.of_nat m))%Z = (a / 2^(Z.of_nat (n+m)))%Z.
