@@ -11,7 +11,7 @@ Require BinNums.
 Require Import Cyclic8.
 Require Import Cyclic256.
 
-Module ConcreteWord <: Word.
+Module ConcreteWord2 <: Word.
 
   Module W := Int256Cyclic.
 
@@ -641,6 +641,105 @@ apply phi_eq_lemma.
 Z_div_mod_nolet.
 *)
 
+Lemma Zdiv_Z2pow8 : forall a n m,
+ (a / 2^(Z.of_nat n) / 2^(Z.of_nat m))%Z = (a / 2^(Z.of_nat (n+m)))%Z.
+intros.
+rewrite Zdiv_Zdiv.
+Search (?a ^ _ * ?a ^ _)%Z.
+rewrite <- Z.pow_add_r; try omega.
+Search (Z.of_nat (_ + _)).
+rewrite Nat2Z.inj_add;trivial.
+try apply Z.lt_gt; try apply Z.lt_le_incl; apply power_gt_0.
+try apply Z.lt_gt; try apply Z.lt_le_incl; apply power_gt_0.
+Qed.
+
+Lemma foo_aux: forall w, On =
+fst
+  (split_word 8
+     (fst
+        (split_word 8
+           (fst
+              (split_word 8
+                 (fst
+                    (split_word 8
+                       (fst
+                          (split_word 8
+                             (fst
+                                (split_word 8
+                                   (fst
+                                      (split_word 8
+                                         (fst
+                                            (split_word 8
+                                               (fst
+                                                  (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst
+                                                   (split_word 8
+                                                   (fst (split_word 8 w))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))).
+unfold split_word.
+fold Z2pow8.
+intros.
+apply phi_eq_lemma.
+rewrite !phi_div_fst.
+
+unfold Z2pow8.
+rewrite !Zdiv_Z2pow8.
+simpl.
+assert (phi w < Z.pow_pos 2 256)%Z.
+apply phi_bounded.
+rewrite Zdiv_small;auto.
+apply phi_bounded.
+Qed.
+
+Lemma words_of_nth_bytes_aux2
+     : forall (lst : list byte) (w : int256),
+       word_of_bytes lst = fst (split_word 8 w) ->
+       phi (word_of_bytes (word_nth_byte w 0 :: lst)) = phi w.
+intros.
+rewrite words_of_nth_bytes_aux;auto.
+Qed.
+
   Lemma words_of_nth_bytes :
     forall w b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 b10 b11 b12 b13 b14 b15 b16 b17 b18 b19 b20 b21 b22 b23 b24 b25 b26 b27 b28 b29 b30 b31,
     b0 = word_nth_byte w 0 ->
@@ -684,7 +783,10 @@ intros.
 
 rewrite H.
 apply words_of_nth_bytes_aux.
+
+
 rewrite H0; rewrite split_nth_byte; apply words_of_nth_bytes_aux.
+
 rewrite H1; rewrite split_nth_byte; apply words_of_nth_bytes_aux.
 rewrite H2; rewrite split_nth_byte; apply words_of_nth_bytes_aux.
 rewrite H3; rewrite split_nth_byte; apply words_of_nth_bytes_aux.
@@ -715,46 +817,12 @@ rewrite H27; rewrite split_nth_byte; apply words_of_nth_bytes_aux.
 rewrite H28; rewrite split_nth_byte; apply words_of_nth_bytes_aux.
 rewrite H29; rewrite split_nth_byte; apply words_of_nth_bytes_aux.
 rewrite H30; rewrite split_nth_byte; apply words_of_nth_bytes_aux.
-unfold word_of_bytes.
-simpl.
-rewrite H.
- rewrite !word_nth_aux.
 
-Lemma : forall u w, combine_word 8 (u, word_nth_byte_aux w 0) = w.
+apply foo_aux.
+Opaque split_word.
+Qed.
 
-simpl.
-rewrite H0.
-rewrite H1.
-rewrite H2.
-rewrite H3.
-rewrite H4.
-rewrite H5.
-rewrite H6.
-rewrite H7.
-rewrite H8.
-rewrite H9.
-rewrite H10.
-rewrite H11.
-rewrite H12.
-rewrite H13.
-rewrite H14.
-rewrite H15.
-rewrite H16.
-rewrite H17.
-rewrite H18.
-rewrite H19.
-rewrite H20.
-rewrite H21.
-rewrite H22.
-rewrite H23.
-rewrite H24.
-rewrite H25.
-rewrite H26.
-rewrite H27.
-rewrite H28.
-rewrite H29.
-rewrite H30.
-  Admitted.
+Transparent split_word.
 
   Axiom event : Set.
 
@@ -956,4 +1024,4 @@ Qed.
       storage_store bk bv (storage_store ak av orig).
   Admitted.
 
-End ConcreteWord.
+End ConcreteWord2.

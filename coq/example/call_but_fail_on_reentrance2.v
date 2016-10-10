@@ -1,3 +1,6 @@
+Require Import Ring256.
+Require Import Cyclic256.
+Require Import Int256 Cyclic256 CyclicAxioms.
 Require Import ContractSem.
 Require Import ConcreteWord2.
 Require Import ZArith.
@@ -205,10 +208,6 @@ Proof.
   }
 Qed.
 
-Opaque word_zero.
-Opaque word_one.
-Opaque word_of_N.
-
 Lemma zero_zero : word_iszero word_zero = true.
 auto.
 Qed.
@@ -229,6 +228,61 @@ apply Cyclic256.phi_bounded.
         apply H'.
         apply H.
 Qed.
+Lemma one_not_zero : word_iszero word_one = false.
+unfold word_one.
+cbv.
+auto.
+Qed.
+Lemma two_mod : (let (_, r) := word_of_N 2 / word_of_N 256 in r) = word_of_N 2.
+apply phi_eq_lemma.
+rewrite Cyclic256.spec_mod.
+auto with zarith.
+simpl.
+cbv.
+auto.
+Qed.
+
+Lemma word_eq_refl : forall w, word_eq w w = true.
+intros.
+unfold word_eq.
+rewrite Cyclic256.spec_compare.
+rewrite Z.compare_refl.
+trivial.
+Qed.
+
+Lemma zero_div : (let (_, r) := word_of_N 0 / word_of_N 256 in r) = word_zero.
+apply phi_eq_lemma.
+rewrite Cyclic256.spec_mod.
+auto with zarith.
+simpl.
+cbv.
+auto.
+Qed.
+Lemma zero_mod : word_mod (word_of_N 0) (word_of_N 256) = word_zero.
+unfold word_mod.
+unfold ZnZ.modulo.
+simpl.
+apply zero_div.
+Qed.
+
+Section SSSSS.
+
+Local Open Scope int256_scope.
+Lemma word_add_zero : forall w, w + word_zero = w.
+intros.
+unfold word_zero.
+unfold CyclicAxioms.ZnZ.zero.
+simpl.
+ring.
+Qed.
+
+End SSSSS.
+
+(*
+Opaque word_zero.
+Opaque word_one.
+Opaque word_of_N.
+*)
 
 Theorem example2_spec_impl_match :
   forall st n,
@@ -292,14 +346,13 @@ Proof.
       unfold empty_storage.
       simpl.
 
-rewrite zero_zero.
 
       repeat (case s as [| s]; [ solve [left; auto] | ]).
+
       simpl.
-Transparent word_of_N.
       compute_word_mod.
-Opaque word_of_N.
-fold Int256.On.
+(* rewrite zero_zero.
+fold Int256.On. *)
 rewrite zero_smallest.
       right.
       eexists.
@@ -323,9 +376,7 @@ rewrite zero_smallest.
           { eauto. }
 unfold account_storage.
 unfold storage_store.
-Transparent word_of_N.
 compute_word_mod.
-Opaque word_of_N.
           apply ST.add_1.
           auto.
         }
@@ -334,27 +385,12 @@ Opaque word_of_N.
         {
 unfold account_storage.
           Check update_remove_eq.
-Transparent word_of_N.
 compute_word_mod.
-Opaque word_of_N.
 fold Int256.In.
 
-Require Import Ring256.
-Require Import Cyclic256.
-Require Import Int256 Cyclic256 CyclicAxioms.
-
-Local Open Scope int256_scope.
-Lemma word_add_zero : forall w, w + word_zero = w.
-intros.
-Transparent word_zero.
-unfold word_zero.
-unfold CyclicAxioms.ZnZ.zero.
-simpl.
-ring.
-Qed.
-
+(*
 rewrite word_add_zero.
-
+*)
           apply update_remove_eq.
           assumption.
         }
@@ -370,20 +406,11 @@ rewrite word_add_zero.
 
 unfold venv_storage.
 unfold storage_store at 2.
-Transparent word_of_N.
 compute_word_mod.
-Opaque word_of_N.
 fold Int256.In.
 rewrite word_add_zero.
           Check update_remove_eq.
           apply update_remove_eq.
-Lemma word_eq_refl : forall w, word_eq w w = true.
-intros.
-unfold word_eq.
-rewrite Cyclic256.spec_compare.
-rewrite Z.compare_refl.
-trivial.
-Qed.
           assumption.
         }
       }
@@ -424,47 +451,24 @@ Qed.
 cbn.
 
         repeat (case s as [| s]; [ solve [left; auto] | ]).
-        cbn.
-
-Lemma zero_div : (let (_, r) := word_of_N 0 / word_of_N 256 in r) = word_zero.
-apply phi_eq_lemma.
-rewrite Cyclic256.spec_mod.
-auto with zarith.
-Transparent word_of_N.
 simpl.
-cbv.
-auto.
-Qed.
-rewrite zero_div.
+unfold word_zero in st_load.
+unfold ZnZ.zero in st_load.
+simpl in st_load.
         rewrite st_load.
-Opaque word_of_N.
         simpl.
+
         rewrite st_code.
 
-Lemma one_not_zero : word_iszero word_one = false.
-Transparent word_one.
-Transparent word_of_N.
-unfold word_one.
-cbv.
-auto.
-Qed.
-Lemma two_mod : (let (_, r) := word_of_N 2 / word_of_N 256 in r) = word_of_N 2.
-apply phi_eq_lemma.
-rewrite Cyclic256.spec_mod.
-auto with zarith.
-Transparent word_of_N.
-simpl.
-cbv.
-auto.
-Qed.
-Opaque word_one.
-Opaque word_of_N.
-rewrite one_not_zero.
 unfold venv_first_instruction.
 unfold venv_prg_sfx.
+compute_word_mod.
+(*
 rewrite two_mod.
+rewrite one_not_zero.
 Search (N_of_word (word_of_N _)).
 rewrite N_of_word_of_N.
+*)
         simpl.
         right.
         eexists.
@@ -477,8 +481,6 @@ rewrite N_of_word_of_N.
         apply example2_spec_impl_match.
         unfold example2_depth_n_state.
         intuition.
-cbv.
-trivial.
       }
     { (* return *)
       unfold respond_to_return_correctly.
@@ -534,14 +536,8 @@ trivial.
       simpl.
       rewrite st_code.
 
-Lemma zero_mod : word_mod (word_of_N 0) (word_of_N 256) = word_zero.
-unfold word_mod.
-unfold ZnZ.modulo.
-simpl.
-apply zero_div.
-Qed.
+compute_word_mod.
 
-rewrite zero_mod.
       simpl.
       right.
       f_equal.

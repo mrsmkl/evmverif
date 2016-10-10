@@ -95,5 +95,9 @@ Section TestRing.
 Let test : forall x y z, x-(y+z) = x-y-z.
 intros. ring.
 Qed.
+Let test2 : forall x, x+On = x.
+intros. ring.
+Search (?a + _).
+Qed.
 End TestRing.
 
