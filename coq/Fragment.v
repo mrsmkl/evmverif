@@ -501,20 +501,127 @@ rewrite H1.
 eassumption.
 Qed.
 
+Inductive f_result :=
+| FToWorld : contract_action ->
+                   storage ->
+                   (address -> word) ->
+                   option variable_env -> f_result
+| FInvalid : f_result
+| FContinue : variable_env -> f_result
+| FFinish : variable_env -> f_result.
+
+Definition f_step (exit_point:_ -> bool) c v :=
+  match v with
+    | FContinue v =>
+      if exit_point v then FFinish v else
+      match v.(venv_prg_sfx) with
+      | nil => FToWorld ContractFail v.(venv_storage_at_call) v.(venv_balance_at_call) None
+      | i :: _ =>
+        match instruction_sem v c i with
+        | InstructionContinue new_v =>
+          FContinue new_v
+        | InstructionToWorld ContractFail opt_pushed_v =>
+          FToWorld ContractFail v.(venv_storage_at_call) v.(venv_balance_at_call) opt_pushed_v
+        | InstructionToWorld (ContractCall args) (Some new_v) =>
+          FToWorld (ContractCall args) new_v.(venv_storage) new_v.(venv_balance) (Some new_v)
+        | InstructionToWorld a opt_pushed_v =>
+          FToWorld a v.(venv_storage) v.(venv_balance) opt_pushed_v
+        | InstructionInvalid => FInvalid
+        end
+      end
+    | a => a
+  end.
+
+Fixpoint f_step_iter (exit_point:_ -> bool) c v steps :=
+  match steps with
+  | O => v
+  | S steps => f_step_iter exit_point c (f_step exit_point c v) steps
+end.
+
+Definition f_step_big exit_point c v steps :=
+  match f_step_iter exit_point c (FContinue v) steps with
+  | FContinue _ => FragmentStepRunOut
+  | FFinish v => FragmentContinue v
+  | FInvalid => FragmentInvalid
+  | FToWorld x1 x2 x3 x4 => FragmentToWorld x1 x2 x3 x4
+  end.
+
+Lemma f_step_tail : forall steps cond c v,
+  f_step cond c (f_step_iter cond c v steps) = 
+  (f_step_iter cond c v (S steps)).
+induction steps;auto;intros.
+simpl.
+rewrite IHsteps.
+auto.
+Qed.
+
+Lemma iter_world : forall cond c n x1 x2 x3 x4,
+  f_step_iter cond c (FToWorld x1 x2 x3 x4) n = FToWorld x1 x2 x3 x4.
+induction n; intros; auto.
+rewrite <- IHn at 2.
+auto.
+Qed.
+
+Lemma iter_invalid : forall cond c n, f_step_iter cond c FInvalid n = FInvalid.
+induction n; intros; auto.
+Qed.
+
+Lemma iter_finish : forall cond c n v,
+   f_step_iter cond c (FFinish v) n = FFinish v.
+induction n; intros; auto.
+rewrite <- IHn at 2.
+auto.
+Qed.
+
+Lemma big_small : forall steps cond c v,
+  f_step_big cond c v steps = fragment_sem cond v c steps.
+induction steps; intros; auto.
+simpl.
+unfold f_step_big.
+simpl.
+
+elim (bool_tf (cond v)); intros; auto; rewrite H in *.
+
+destruct (venv_prg_sfx v).
+rewrite iter_world; auto.
+
+destruct (instruction_sem v c i).
+rewrite <- IHsteps.
+auto.
+
+destruct c0; destruct o; rewrite iter_world; auto.
+
+rewrite iter_invalid; auto.
+
+rewrite iter_finish; auto.
+Qed.
+
 
 Lemma iter_cond_true : forall steps v c cond vv,
    FragmentContinue vv = iter_sem v c steps ->
    cond vv = true ->
-   (forall v2 n, (n < steps)%nat -> FragmentContinue v2 = iter_sem v c n ->
-    cond vv = false) ->
-   FragmentContinue vv = fragment_sem cond v c (S steps).
+   exists steps2 vv2, FragmentContinue vv2 = fragment_sem cond v c steps2.
 induction steps; intros.
-simpl.
 simpl in H.
+exists (S O).
+exists vv.
+simpl.
 inversion H.
 rewrite H2 in *.
-rewrite H0.
+rewrite H0 in *.
 trivial.
+elim (iter_seq steps v c vv); intros; auto.
+Check (IHsteps v c cond x H1).
+eapply IHsteps.
+
+
+Lemma iter_cond_false : forall steps v c cond vv,
+   FragmentContinue vv = iter_sem v c steps ->
+   cond vv = false ->
+   FragmentStepRunOut = fragment_sem cond v c steps ->
+   FragmentStepRunOut = fragment_sem cond v c (S steps).
+
+induction steps; intros; auto.
 
 elim (bool_tf (cond v)); intros; auto.
 simpl; simpl in H.
@@ -522,15 +629,59 @@ rewrite H1 in *.
 
 destruct (venv_prg_sfx v).
 inversion H.
+rewrite H2 in *.
+simpl.
+
+rewrite H4 in *.
+congruence.
+
+destruct (instruction_sem v c i).
+eapply (IHsteps v0 c);eauto.
+destruct c0; destruct o; inversion H.
+inversion H.
+
+simpl; simpl in H.
+rewrite H1 in *.
+
+intros.
+
+apply (H1 _ n); try omega.
+
+Lemma iter_cond_true : forall steps v c cond vv,
+   FragmentContinue vv = iter_sem v c steps ->
+   cond vv = true ->
+   (forall v2 n, (n < steps)%nat -> FragmentContinue v2 = iter_sem v c n ->
+    cond v2 = false) ->
+   FragmentContinue vv = fragment_sem cond v c (S steps).
+
+
+induction steps; intros.
+simpl.
+simpl in H.
+inversion H.
+rewrite H3 in *.
+rewrite H0.
+trivial.
+
+elim (bool_tf (cond v)); intros; auto.
+simpl; simpl in H.
+rewrite H2 in *.
+
+destruct (venv_prg_sfx v).
+inversion H.
 destruct (instruction_sem v c i).
 apply (IHsteps v0 c);auto.
+intros.
+
+apply (H1 _ n); try omega.
+admit.
 
 destruct c0; destruct o; inversion H.
 inversion H.
 
 
 simpl; simpl in H.
-rewrite H1 in *.
+rewrite H2 in *.
 
 destruct (venv_prg_sfx v).
 inversion H.
