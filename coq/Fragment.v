@@ -596,7 +596,7 @@ rewrite iter_invalid; auto.
 rewrite iter_finish; auto.
 Qed.
 
-
+(*
 Lemma iter_cond_true : forall steps v c cond vv,
    FragmentContinue vv = iter_sem v c steps ->
    cond vv = true ->
@@ -774,6 +774,317 @@ destruct (venv_prg_sfx v).
 inversion H.
 destruct (instruction_sem v c i).
 apply (IHsteps v c cond).
+*)
+
+Lemma step_cond : forall cond1 cond2 c v,
+  f_step cond1 c v = f_step cond2 c v \/
+  (exists st, v = FContinue st /\ cond1 st <> cond2 st).
+intros.
+destruct v; try (left; auto; omega).
+elim (Bool.bool_dec (cond1 v) (cond2 v)); intros.
+left.
+simpl.
+rewrite a; clear a.
+auto.
+right; exists v.
+auto.
+Qed.
+
+Lemma step_weak : forall cond1 cond2 c v vv,
+  (forall st, cond1 st = true -> cond2 st = true) ->
+  f_step cond2 c v = FContinue vv ->
+  f_step cond1 c v = FContinue vv.
+intros.
+unfold f_step in *.
+destruct v; auto.
+elim (bool_tf (cond1 v)); elim (bool_tf (cond2 v)); intros;
+ rewrite H2 in *; rewrite H1 in *.
+destruct (venv_prg_sfx v).
+inversion H0.
+destruct (instruction_sem v c i); auto.
+inversion H0.
+rewrite H in H1; congruence.
+inversion H0.
+Qed.
+
+Lemma previous_step : forall cond c v vv,
+  f_step cond c v = FContinue vv ->
+  exists st, v = FContinue st.
+intros.
+destruct v; simpl in *; try inversion H.
+exists v; auto.
+Qed.
+
+Lemma iter_step_weak : forall n cond1 cond2 c v vv,
+  (forall st, cond1 st = true -> cond2 st = true) ->
+  f_step_iter cond2 c v n = FContinue vv ->
+  f_step_iter cond1 c v n = f_step_iter cond2 c v n.
+induction n; intros; auto.
+rewrite <- f_step_tail.
+rewrite H0.
+eapply step_weak.
+eassumption.
+
+elim (previous_step cond2 c (f_step_iter cond2 c v n) vv); auto.
+intros.
+erewrite (IHn cond1 cond2 c _ _); auto.
+rewrite f_step_tail; auto.
+
+eassumption.
+rewrite f_step_tail; auto.
+Qed.
+
+Lemma iter_step_cond : forall n cond1 cond2 c v,
+  f_step_iter cond1 c v n = f_step_iter cond2 c v n \/
+  (exists m st, (m < n)%nat /\
+   f_step_iter (fun _ => false) c v m = FContinue st /\ cond1 st <> cond2 st).
+induction n; intros.
+left; auto.
+elim (IHn cond1 cond2 c v); intros.
+rewrite <- f_step_tail.
+rewrite <- f_step_tail.
+rewrite H.
+eelim (step_cond cond1 cond2 c); intros.
+left; eassumption.
+right.
+elim H0; clear H0; intros.
+elim H0; clear H0; intros.
+exists n.
+exists x.
+intros; split; auto.
+erewrite iter_step_weak; eauto.
+intros; congruence.
+
+elim H; clear H; intros.
+elim H; clear H; intros.
+elim H; clear H; intros.
+elim H0; clear H0; intros.
+
+right.
+
+exists x; exists x0.
+split; auto.
+Qed.
+
+(* Property for smallest number of steps ... *)
+
+(* assertion iter cond .. P *)
+
+Definition wakeup v := match v with
+ | FFinish a => FContinue a
+ | _ => FInvalid
+end.
+
+Definition finish v := match v with
+ | FContinue a => FFinish a
+ | _ => FInvalid
+end.
+
+Definition never (a:variable_env) := false.
+
+Definition f_iter c v n := f_step_iter never c v n.
+
+Require Import Classical.
+
+Lemma f_iter_dec : forall cond c v,
+     (forall n, f_step_iter cond c v n = f_iter c v n) \/
+      not (forall n, f_step_iter cond c v n = f_iter c v n).
+intros; apply classic.
+Qed.
+
+Lemma f_iter_exists : forall cond c v,
+   not (forall n, f_step_iter cond c v n = f_iter c v n) ->
+   exists m, f_step_iter cond c v m <> f_iter c v m.
+
+intros.
+elim (not_all_ex_not nat (fun n => f_step_iter cond c v n = f_iter c v n));
+  intros; auto.
+exists x; auto.
+Qed.
+
+Lemma eq_neq_absurd : forall A (a b : A), a = b -> a <> b -> False.
+intuition.
+Qed.
+
+Lemma exists_smallest : forall A (P:A->Prop) (f:nat -> A) n,
+  P (f n) -> exists m, P (f m) /\ forall k, (k < m)%nat -> not (P (f k)).
+intros.
+elim (dec_inh_nat_subset_has_unique_least_element (fun n => P (f n))); intros.
+elim H0; clear H0; intros.
+exists x.
+elim H0; clear H0 H1; intros.
+split; auto; intros.
+intro.
+pose (H1 k H3).
+omega.
+apply classic.
+exists n; auto.
+Qed.
+
+Lemma iter_step_smallest : forall (P:f_result->Prop) cond c v n,
+  P (f_step_iter cond c v n) ->
+  exists m, P (f_step_iter cond c v m) /\
+            forall k, (k < m)%nat -> not (P (f_step_iter cond c v k)).
+intros.
+eapply exists_smallest; eassumption.
+Qed.
+
+Lemma iter_step_cond2 : forall n cond c v,
+  f_step_iter cond c v n = f_iter c v n \/
+  (exists m st, (m < n)%nat /\
+   f_iter c v m = FContinue st /\ cond st = true).
+intros.
+unfold f_iter.
+eelim iter_step_cond; intros.
+left; eassumption.
+right.
+elim H; clear H; intros.
+elim H; clear H; intros.
+elim H; clear H; intros.
+elim H0; clear H0; intros.
+exists x, x0.
+split; auto.
+split; auto.
+unfold never in H1.
+elim (bool_tf (cond x0)); auto.
+Qed.
+
+Lemma keep_going_while_false : forall cond v c n,
+  (forall k, (k < n)%nat ->
+     not (exists st, f_iter c v k = FContinue st /\ cond st = true)) ->
+  f_step_iter cond c v n = f_iter c v n.
+intros.
+eelim iter_step_cond2; intros; try eassumption.
+elim H0; clear H0; intros.
+elim H0; clear H0; intros.
+elim H0; clear H0; intros.
+elim (H x H0).
+exists x0.
+auto.
+Qed.
+
+Lemma finish_at_first_true : forall cond v c n st,
+  (forall k, (k < n)%nat ->
+     not (exists st, f_iter c v k = FContinue st /\ cond st = true)) ->
+  f_iter c v n = FContinue st -> cond st = true ->
+  f_step_iter cond c v (S n) = FFinish st.
+
+intros.
+rewrite <- f_step_tail.
+erewrite keep_going_while_false; auto.
+rewrite H0.
+unfold f_step.
+rewrite H1; auto.
+Qed.
+
+Lemma iter_add : forall cond c v n m,
+   f_step_iter cond c (f_step_iter cond c v n) m = f_step_iter cond c v (n+m)%nat.
+intros.
+induction n; auto.
+
+Search (S _ + _ = _)%nat.
+rewrite Nat.add_succ_l.
+
+rewrite <- !f_step_tail.
+rewrite <- IHn.
+rewrite !f_step_tail.
+unfold f_step_iter; fold f_step_iter.
+rewrite !f_step_tail.
+auto.
+Qed.
+
+Definition stop_at m c v n :=
+  if Nat.ltb n (S m) then f_iter c v n else
+  finish (f_iter c v m).
+
+Lemma stop_at_cond : forall cond c v,
+  (forall n, f_step_iter cond c v n = f_iter c v n) \/
+  exists m, forall n, f_step_iter cond c v n = stop_at m c v n.
+intros.
+
+eelim f_iter_dec; intros.
+left; eassumption.
+right.
+eelim f_iter_exists; intros; try eassumption.
+
+eelim iter_step_cond; intros.
+
+unfold f_iter in H0.
+pose (eq_neq_absurd _ _ _ H1 H0).
+tauto.
+
+elim H1; clear H1; intros.
+elim H1; clear H1; intros.
+elim H1; clear H1; intros.
+elim H2; clear H2; intros.
+
+elim (iter_step_smallest
+       (fun res => exists st, res = FContinue st /\ cond st = true)
+       never c v x0); intros.
+
+elim H4; clear H4; intros.
+elim H4; clear H4; intros.
+elim H4; clear H4; intros.
+
+exists x2; intros.
+
+clear H2.
+
+unfold stop_at.
+
+elim (bool_tf (n <? S x2)%nat); intros; rewrite H2.
+
+unfold f_iter.
+
+(* rewrite <- f_step_tail. *)
+rewrite H4.
+
+replace (f_step_iter never c v x2) with (f_step_iter cond c v x2) in H4.
+
+elim (Nat.ltb_ge n (S x2)); intros.
+pose (H7 H2).
+
+elim (Nat.le_exists_sub _ _ l); intros.
+elim H9; clear H9; intros.
+rewrite H9.
+rewrite <- Nat.add_succ_comm.
+rewrite <- Nat.add_comm.
+rewrite <- iter_add.
+rewrite H4.
+unfold finish.
+
+simpl.
+rewrite H6.
+rewrite iter_finish.
+auto.
+
+apply keep_going_while_false; auto.
+apply keep_going_while_false; intros.
+
+elim (Nat.ltb_lt n (S x2)); intros.
+apply H5.
+pose (H8 H2).
+omega.
+
+exists x1.
+split; auto.
+
+unfold never in H3.
+elim (bool_tf (cond x1)); auto.
+Qed.
+
+(* Something like this might make composition easy: *)
+Lemma wakeup_glue : forall cond1 cond2 c n1 n2 v1 v2 v3,
+  (forall st, cond1 st = true -> cond2 st = true) ->
+  FFinish v1 = f_step_iter cond1 c v1 n1 ->
+  FFinish v3 = f_step_iter cond2 c v2 n2 ->
+  exists m, FFinish v3 = f_step_iter cond2 c v1 m.
+
+(*
+f_step_iter n (wakeup (f_step_iter m)) = f_step_iter (n+m)
+*)
+
+
 
 (* Needs to specify that it stays in fragment *)
 Lemma compose_simple_fragments :
@@ -806,6 +1117,7 @@ elim H5; clear H5; intros.
 exists x0.
 split; auto.
 clear H1.
+
 
 End Fragment.
 
