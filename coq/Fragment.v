@@ -1408,11 +1408,155 @@ Lemma stay_in_code : forall cond c v m st,
 admit.
 Admitted.
 
+Lemma app_cons : forall A l (a:A), a::l = (a::nil) ++ l.
+induction l; eauto.
+Qed.
+
+Lemma program_length_nil : program_lengthZ nil = 0.
+auto.
+Qed.
+
+Lemma program_length_i : forall i, program_lengthZ (i :: nil) > 0.
+intros.
+destruct i; unfold program_lengthZ; simpl; omega.
+Qed.
+
+Lemma program_length_0 : forall code, program_lengthZ code >= 0.
+unfold program_lengthZ.
+intros.
+apply Z.le_ge.
+apply N2Z.is_nonneg.
+Qed.
+
+Lemma bad_length : forall i code,
+  program_lengthZ (i :: code) = program_lengthZ nil -> False.
+intros. 
+rewrite app_cons in H.
+rewrite <- program_lengthZ_app in H.
+pose (program_length_0 code).
+
+rewrite program_length_nil in H.
+
+pose (program_length_i i).
+omega.
+Qed.
+
+Lemma cons_eq : forall A (a:A) l1 l2, l1 = l2 -> a::l1 = a::l2.
+congruence.
+Qed.
+
+Lemma list_prefix : forall A (code1 code2 post1 post2: list A),
+  code1 ++ post1 = code2 ++ post2 ->
+  length code1 = length code2 ->
+  code1 = code2.
+induction code1.
+destruct code2; auto.
+simpl; intros.
+inversion H0.
+destruct code2.
+simpl; intros.
+inversion H0.
+intros.
+simpl in H0.
+inversion H0.
+inversion H.
+apply cons_eq.
+eapply IHcode1; eauto.
+Qed.
+
+Lemma rev_eq : forall A (l1 l2: list A),
+  rev l1 = rev l2 ->
+  l1 = l2.
+intros.
+rewrite <- rev_involutive.
+rewrite <- rev_involutive at 1.
+rewrite H.
+auto.
+Qed.
+
+Lemma list_postfix : forall A (code1 code2 pre1 pre2: list A),
+  pre1 ++ code1 = pre2 ++ code2 ->
+  length code1 = length code2 ->
+  code1 = code2.
+intros.
+apply rev_eq.
+eapply list_prefix.
+rewrite <- !rev_app_distr.
+apply rev_eq.
+rewrite !rev_involutive.
+eassumption.
+rewrite !rev_length.
+auto.
+Qed.
+
+
+Lemma program_pre_length : forall code1 code2 post1 post2,
+  code1 ++ post1 = code2 ++ post2->
+  program_lengthZ code1 = program_lengthZ code2 ->
+  length code1 = length code2.
+induction code1.
+destruct code2; auto.
+simpl; intros.
+eelim bad_length; eauto.
+
+destruct code2; auto.
+simpl; intros.
+eelim bad_length; eauto.
+simpl.
+intros.
+apply eq_S.
+eapply IHcode1.
+inversion H.
+eauto.
+inversion H.
+rewrite H2 in H0.
+rewrite app_cons in H0.
+rewrite (app_cons _ code2 i) in H0.
+rewrite <- !program_lengthZ_app in H0.
+omega.
+Qed.
+
+
 Lemma program_equality : forall code1 code2 pre1 pre2,
   pre1 ++ code1 = pre2 ++ code2 ->
   program_lengthZ code1 = program_lengthZ code2 ->
   code1 = code2.
+
+induction code1.
+destruct code2; auto.
+
+intros.
+
+eelim bad_length; eauto.
+
+destruct code2; intros.
+
+eelim bad_length; eauto.
+
+assert (a = i).
+
+assert ((pre1 ++ a :: nil) ++ code1 = (pre2 ++ i :: nil) ++ code2).
+
+pose (IHcode1 code2 (pre1 ++ a ::nil) (pre2 ++ i::nil)).
+
 admit.
+rewrite H1 in *.
+
+apply cons_eq.
+eapply IHcode1.
+
+rewrite app_cons in H.
+replace (i :: code2) with ((i :: nil) ++ code2) in H.
+rewrite app_assoc in H.
+rewrite app_assoc in H at 1.
+apply H.
+auto.
+
+rewrite app_cons in H0.
+replace (i :: code2) with ((i :: nil) ++ code2) in H0.
+rewrite <- !program_lengthZ_app in H0.
+omega.
+auto.
 Admitted.
 
 
