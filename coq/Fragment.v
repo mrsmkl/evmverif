@@ -1074,39 +1074,373 @@ elim (bool_tf (cond x1)); auto.
 Qed.
 
 (* Something like this might make composition easy: *)
-Lemma wakeup_glue : forall cond1 cond2 c n1 n2 v1 v2 v3,
-  (forall st, cond1 st = true -> cond2 st = true) ->
-  FFinish v1 = f_step_iter cond1 c v1 n1 ->
-  FFinish v3 = f_step_iter cond2 c v2 n2 ->
-  exists m, FFinish v3 = f_step_iter cond2 c v1 m.
-
 (*
 f_step_iter n (wakeup (f_step_iter m)) = f_step_iter (n+m)
 *)
 
+Lemma not_stuck : forall c v st k, FFinish st = f_iter c (FContinue v) k -> False.
+induction k.
+cbv.
+intros H; inversion H.
+unfold f_iter in *.
+rewrite <- f_step_tail.
+destruct (f_step_iter never c (FContinue v) k); simpl; intros.
+inversion H.
+inversion H.
+
+destruct (venv_prg_sfx v0); inversion H.
+destruct (instruction_sem v0 c i); inversion H.
+destruct c0; destruct o; inversion H.
+tauto.
+Qed.
+
+Lemma stop_at_cond2 : forall cond c v k st,
+  FFinish st = f_step_iter cond c (FContinue v) k ->
+  exists m, forall n,
+  f_step_iter cond c (FContinue v) n = stop_at m c (FContinue v) n.
+intros.
+eelim stop_at_cond; intros; eauto.
+rewrite (H0 k) in H.
+
+eelim not_stuck.
+eassumption.
+Qed.
+
+Lemma glue_stop : forall c n1 n2 v1 v2 v3,
+  FFinish v2 = stop_at n1 c (FContinue v1) (S n1) ->
+  FFinish v3 = stop_at n2 c (FContinue v2) (S n2) ->
+  FFinish v3 = stop_at (n1+n2)%nat c (FContinue v1) (S (n1+n2))%nat.
+unfold stop_at.
+Search (?a <? ?a)%nat.
+intros c n1 n2 v1 v2 v3.
+rewrite !Nat.ltb_irrefl.
+unfold f_iter.
+intros.
+rewrite <- iter_add.
+rewrite H0.
+assert (FContinue v2 = f_step_iter never c (FContinue v1) n1).
+
+unfold finish in H.
+destruct (f_step_iter never c (FContinue v1) n1); inversion H; auto.
+
+rewrite H1.
+auto.
+Qed.
+
+Lemma stop_at_stable : forall c v m n,
+  (S m <= n)%nat -> stop_at m c v n = stop_at m c v (S m).
+intros.
+unfold stop_at.
+rewrite Nat.ltb_irrefl.
+
+assert (n <? S m = false)%nat.
+
+apply Nat.ltb_ge; auto.
+
+rewrite H0.
+auto.
+Qed.
+
+Lemma stop_at_stable2 : forall c m n v2 v3,
+  FFinish v3 = stop_at m c (FContinue v2) n ->
+  FFinish v3 = stop_at m c (FContinue v2) (S m).
+intros c m n v2 v3.
+unfold stop_at.
+elim (bool_tf (n <? S m)%nat); intros.
+rewrite H in H0.
+rewrite !Nat.ltb_irrefl.
+auto.
+rewrite H in H0.
+rewrite !Nat.ltb_irrefl.
+eelim not_stuck; eassumption.
+Qed.
+
+Lemma what_was_finished : forall c v n st,
+  FFinish st = stop_at n c v (S n) ->
+  FContinue st = stop_at n c v n.
+
+intros c v n st.
+unfold stop_at.
+rewrite !Nat.ltb_irrefl.
+assert (n <? S n = true)%nat.
+Search (_ <? _)%nat.
+apply Nat.ltb_lt.
+omega.
+rewrite H.
+unfold finish.
+intros.
+destruct (f_iter c v n); inversion H0; auto.
+Qed.
+
+Lemma finished_cond : forall cond n c v st,
+  FFinish st = f_step_iter cond c (FContinue v) n ->
+  cond st = true.
+induction n; simpl; intros.
+inversion H.
+elim (bool_tf (cond v)); intros.
+rewrite H0 in H.
+destruct (venv_prg_sfx v).
+rewrite iter_world in H.
+inversion H.
+destruct (instruction_sem v c i).
+eapply IHn; eassumption.
+destruct c0; destruct o.
+rewrite iter_world in H; inversion H.
+rewrite iter_world in H; inversion H.
+rewrite iter_world in H; inversion H.
+rewrite iter_world in H; inversion H.
+rewrite iter_world in H; inversion H.
+rewrite iter_world in H; inversion H.
+rewrite iter_world in H; inversion H.
+rewrite iter_world in H; inversion H.
+rewrite iter_invalid in H; inversion H.
+rewrite H0 in H.
+rewrite iter_finish in H; inversion H.
+trivial.
+Qed.
+
+Lemma stop_at_iter : forall v1 v2 x c y,
+  FContinue v2 = stop_at x c (FContinue v1) y ->
+  FContinue v2 = f_iter c (FContinue v1) y.
+intros v1 v2 x c y.
+unfold stop_at.
+elim (bool_tf (y <? S x)%nat); intro H; rewrite H; intros; auto.
+unfold finish in H0.
+destruct (f_iter c (FContinue v1) x); inversion H0.
+Qed.
+
+Lemma glue_success_1 : forall cond c v st m,
+  FContinue st = f_step_iter cond c v m ->
+  cond st = true ->
+  FFinish st = f_step_iter cond c v (S m).
+intros.
+rewrite <- f_step_tail.
+rewrite <- H.
+simpl.
+rewrite H0.
+trivial.
+Qed.
+
+Lemma find_back : forall cond n c v st,
+   FContinue st = f_step_iter cond c v n ->
+   exists st2, FContinue st2 = v.
+induction n; intros.
+simpl in H.
+destruct v; inversion H.
+eauto.
+unfold f_step_iter in H; fold f_step_iter in H.
+elim (IHn _ _ _ H); intros.
+destruct v; simpl in H0; inversion H0.
+clear H2.
+elim (bool_tf (cond v)); intros.
+rewrite H1 in H0.
+eauto.
+rewrite H1 in H0.
+eauto.
+Qed.
+
+Lemma iter_step_weak2 : forall n cond c v vv,
+  FContinue vv = f_step_iter cond c v n ->
+  FContinue vv = f_iter c v n.
+intros.
+unfold f_iter.
+apply eq_sym.
+rewrite H.
+eapply iter_step_weak; eauto.
+unfold never.
+congruence.
+Qed.
+
+Lemma iter_falses : forall cond m c v st,
+  FContinue st = f_step_iter cond c v m ->
+  forall n, (n < m)%nat ->
+  exists st2, FContinue st2 = f_iter c v n /\ cond st2 = false.
+
+intros.
+pose (lt_le_S _ _ H0).
+
+elim (Nat.le_exists_sub _ _ l); intros.
+elim H1; clear H1; intros.
+rewrite H1 in *.
+
+(* rewrite <- Nat.add_succ_comm in H. *)
+rewrite <- Nat.add_comm in H.
+rewrite <- iter_add in H.
+
+eelim find_back; intros; try apply H.
+
+rewrite <- f_step_tail in H3.
+
+eelim previous_step; eauto; intros.
+
+rewrite H4 in *.
+exists x1.
+split.
+eapply iter_step_weak2.
+apply eq_sym; eassumption.
+
+elim (bool_tf (cond x1)); intros; auto.
+unfold f_step in H3.
+rewrite H5 in H3.
+inversion H3.
+Qed.
+
+Lemma glue_iter : forall cond1 cond2 c n1 n2 v1 v2 v3,
+  (forall st, cond2 st = true -> cond1 st = true) ->
+  FFinish v2 = f_step_iter cond1 c (FContinue v1) n1 ->
+  FFinish v3 = f_step_iter cond2 c (FContinue v2) n2 ->
+  exists m, FFinish v3 = f_step_iter cond2 c (FContinue v1) m.
+
+intros.
+
+elim (stop_at_cond2 cond1 c v1 n1 v2); intros; auto.
+elim (stop_at_cond2 cond2 c v2 n2 v3); intros; auto.
+
+pose (finished_cond _ _ _ _ _ H0).
+pose (finished_cond _ _ _ _ _ H1).
+
+assert (H0' := H0).
+assert (H1' := H1).
+
+rewrite H2 in H0'.
+rewrite H3 in H1'.
+
+pose (stop_at_stable2 _ _ _ _ _ H0').
+pose (stop_at_stable2 _ _ _ _ _ H1').
+pose (glue_stop _ _ _ _ _ _ e1 e2).
+
+pose (what_was_finished _ _ _ _ e1).
+pose (what_was_finished _ _ _ _ e2).
+
+pose (stop_at_iter _ _ _ _ _ e4).
+pose (stop_at_iter _ _ _ _ _ e5).
+
+rewrite e6 in e7.
+unfold f_iter in e7.
+rewrite iter_add in e7.
+
+exists (S (x+x0)).
+
+apply glue_success_1;auto.
+
+assert (rw1 := e4).
+assert (rw2 := e5).
+rewrite <- H2 in rw1.
+rewrite <- H3 in rw2.
+rewrite rw1 in rw2.
+
+rewrite <- iter_add.
+
+replace (f_step_iter cond2 c (FContinue v1) x) with
+ (f_step_iter cond1 c (FContinue v1) x); auto.
+
+apply eq_sym.
+eapply iter_step_weak; eauto.
+Qed.
+
+Open Scope Z.
+
+Definition program_lengthZ code := Z.of_N (program_length code).
+
+Definition pc2 c v :=
+  program_lengthZ (cenv_program c) -
+  program_lengthZ (venv_prg_sfx v).
+
+(*
+Lemma cond_steps_compare : forall cond1 cond2 c v x y,
+  (forall st, cond2 st = true -> cond1 st = true) ->
+  (forall n : nat, f_step_iter cond1 c v n = stop_at x c v n) ->
+  (forall n : nat, f_step_iter cond2 c v n = stop_at y c v n) ->
+  (x <= y)%nat.
+intros.
+
+elim (Nat.le_gt_cases x y); auto; intros.
+
+pose (lt_le_S _ _ H2).
+
+elim (Nat.le_exists_sub _ _ l); intros.
+elim H3; clear H3; intros.
+rewrite H3 in H0.
+clear H4 H3 l H2.
+unfold stop_at in *.
+*)
+
+Definition in_locZ v c loc :=
+  Z.eqb (loc + program_lengthZ v.(venv_prg_sfx))
+          (program_lengthZ c.(cenv_program)).
+
+
+Lemma update_pc : forall c v vv len,
+  in_locZ vv c (pc2 c v + len) = true ->
+  pc2 c v + len = pc2 c vv.
+
+intros.
+unfold pc2 in *.
+unfold in_locN in *.
+
+eelim Z.eqb_eq; intros.
+
+pose (H0 H).
+omega.
+Qed.
+
+Definition in_code c v := exists lst, cenv_program c = lst ++ venv_prg_sfx v.
+
+Lemma program_lengthZ_app : forall c1 c2,
+  program_lengthZ c1 + program_lengthZ c2 = program_lengthZ (c1 ++ c2).
+unfold program_lengthZ.
+intros.
+rewrite <- program_length_app.
+
+rewrite N2Z.inj_add.
+trivial.
+Qed.
+
+Lemma Zeqb_eq : forall n m : Z, (n =? m) = true -> n = m.
+intros; eelim Z.eqb_eq; eauto.
+Qed.
+
+Lemma stay_in_code : forall cond c v m st,
+  in_code c v ->
+  FFinish st = f_step_iter cond c (FContinue v) m ->
+  in_code c st.
+
+admit.
+Admitted.
+
+Lemma program_equality : forall code1 code2 pre1 pre2,
+  pre1 ++ code1 = pre2 ++ code2 ->
+  program_lengthZ code1 = program_lengthZ code2 ->
+  code1 = code2.
+admit.
+Admitted.
 
 
 (* Needs to specify that it stays in fragment *)
 Lemma compose_simple_fragments :
   forall (Pre P2 Post: variable_env -> Prop) c steps1 steps2 v code1 code2 rest,
-  v.(venv_prg_sfx) = code1 ++ code2 ++ rest -> 
+  v.(venv_prg_sfx) = code1 ++ code2 ++ rest -> in_code c v -> 
   (forall v1 rest1 c1,
      v1.(venv_prg_sfx) = code1 ++ rest1 -> 
      Pre v1 ->
      exists vv, P2 vv /\
-     in_locN v c1 (pc v1 + program_length code1) = true /\
-     FragmentContinue vv = fragment_sem (fun v =>
-       in_locN v c1 (pc v1 + program_length code1) ||
-       in_locN v c1 (pc v1 + program_length code1 + program_length code2))%bool v1 c steps1) ->
+     in_locZ vv c1 (pc2 c v1 + program_lengthZ code1) = true /\
+     FFinish vv = f_step_iter (fun v =>
+       in_locZ v c1 (pc2 c v1 + program_lengthZ code1) ||
+       in_locZ v c1 (pc2 c v1 + program_lengthZ code1 + program_lengthZ code2))%bool
+       c (FContinue v1) steps1) ->
   (forall v2 rest2 c2,
      v2.(venv_prg_sfx) = code2 ++ rest2 -> 
      P2 v2 ->
      exists vv, Post vv /\
-     FragmentContinue vv =
-     fragment_sem (fun v => in_locN v c2 (pc v2 + program_length code2)) v2 c steps2) ->
+     FFinish vv =
+       f_step_iter (fun v => in_locZ v c2 (pc2 c v2 + program_lengthZ code2))
+             c (FContinue v2) steps2) ->
   Pre v -> exists vv, Post vv /\
-  FragmentContinue vv =
-  fragment_sem (fun v' => in_locN v' c (pc v + program_length code1 + program_length code2)) v c (steps1 + steps2).
+  exists steps3, FFinish vv =
+    f_step_iter (fun v' => in_locZ v' c (pc2 c v + program_lengthZ code1 + program_lengthZ code2))
+        c (FContinue v) steps3.
+intros Pre P2 Post c steps1 steps2 v code1 code2 rest H H_incode.
 intros.
 elim (H0 v (code2++rest) c H H2); intros.
 clear H0.
@@ -1117,7 +1451,76 @@ elim H5; clear H5; intros.
 exists x0.
 split; auto.
 clear H1.
+pose (fun v : variable_env => in_locZ v c (pc2 c x + program_lengthZ code2)).
+replace (fun v : variable_env => in_locZ v c (pc2 c x + program_lengthZ code2))
+  with b in H6; auto.
+pose (fun v0 : variable_env =>
+        (in_locZ v0 c (pc2 c v + program_lengthZ code1) ||
+ in_locZ v0 c (pc2 c v + program_lengthZ code1 + program_lengthZ code2))%bool).
+replace (fun v0 : variable_env =>
+        (in_locZ v0 c (pc2 c v + program_lengthZ code1) ||
+ in_locZ v0 c (pc2 c v + program_lengthZ code1 + program_lengthZ code2))%bool)
+   with b0 in H4; auto.
+elim (glue_iter b0 b c steps1 steps2 v x x0); intros; auto.
 
+assert (pc2 c v + program_lengthZ code1 = pc2 c x).
+
+apply update_pc; auto.
+
+rewrite H7.
+exists x1.
+apply H1.
+unfold b0.
+unfold b in H1.
+
+assert (pc2 c v + program_lengthZ code1 = pc2 c x).
+apply update_pc; auto.
+
+rewrite H7.
+rewrite H1.
+rewrite Bool.orb_true_r.
+trivial.
+
+clear H1.
+
+assert (in_code c x).
+eapply stay_in_code; eauto.
+
+pose (update_pc _ _ _ _ H3).
+
+elim H_incode; intros.
+elim H1; intros.
+rewrite H in H5.
+unfold in_locZ in H3.
+unfold pc2 in H3.
+
+assert (program_lengthZ code1 + program_lengthZ (venv_prg_sfx x) =
+  program_lengthZ (venv_prg_sfx v)).
+
+pose (Zeqb_eq _ _ H3).
+omega.
+
+rewrite H5 in H6.
+rewrite H in H7.
+
+
+rewrite <- program_lengthZ_app in H7.
+
+assert (program_lengthZ (venv_prg_sfx x) = program_lengthZ (code2 ++ rest)).
+omega.
+
+eapply program_equality; eauto.
+
+apply eq_sym.
+
+replace (x0 ++ code1 ++ code2 ++ rest) with
+        ((x0 ++ code1) ++ code2 ++ rest) in H6.
+
+eapply H6.
+
+rewrite <- app_assoc.
+auto.
+Qed.
 
 End Fragment.
 
