@@ -1516,49 +1516,44 @@ rewrite <- !program_lengthZ_app in H0.
 omega.
 Qed.
 
+Lemma program_length_rev : forall code,
+  program_lengthZ code = program_lengthZ (rev code).
+intros.
+induction code; eauto.
+rewrite app_cons.
+rewrite rev_app_distr.
+rewrite <- !program_lengthZ_app.
+simpl.
+omega.
+Qed.
+
+Lemma program_post_length : forall code1 code2 pre1 pre2,
+  pre1 ++ code1 = pre2 ++ code2 ->
+  program_lengthZ code1 = program_lengthZ code2 ->
+  length code1 = length code2.
+intros.
+rewrite <- rev_length.
+rewrite <- (rev_length code2).
+eapply program_pre_length.
+
+rewrite <- !rev_app_distr.
+apply rev_eq.
+rewrite !rev_involutive.
+eassumption.
+rewrite <- !program_length_rev.
+auto.
+Qed.
 
 Lemma program_equality : forall code1 code2 pre1 pre2,
   pre1 ++ code1 = pre2 ++ code2 ->
   program_lengthZ code1 = program_lengthZ code2 ->
   code1 = code2.
 
-induction code1.
-destruct code2; auto.
-
 intros.
-
-eelim bad_length; eauto.
-
-destruct code2; intros.
-
-eelim bad_length; eauto.
-
-assert (a = i).
-
-assert ((pre1 ++ a :: nil) ++ code1 = (pre2 ++ i :: nil) ++ code2).
-
-pose (IHcode1 code2 (pre1 ++ a ::nil) (pre2 ++ i::nil)).
-
-admit.
-rewrite H1 in *.
-
-apply cons_eq.
-eapply IHcode1.
-
-rewrite app_cons in H.
-replace (i :: code2) with ((i :: nil) ++ code2) in H.
-rewrite app_assoc in H.
-rewrite app_assoc in H at 1.
-apply H.
-auto.
-
-rewrite app_cons in H0.
-replace (i :: code2) with ((i :: nil) ++ code2) in H0.
-rewrite <- !program_lengthZ_app in H0.
-omega.
-auto.
-Admitted.
-
+eapply list_postfix.
+eassumption.
+eapply program_post_length; eauto.
+Qed.
 
 (* Needs to specify that it stays in fragment *)
 Lemma compose_simple_fragments :
