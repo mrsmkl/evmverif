@@ -1400,14 +1400,6 @@ Lemma Zeqb_eq : forall n m : Z, (n =? m) = true -> n = m.
 intros; eelim Z.eqb_eq; eauto.
 Qed.
 
-Lemma stay_in_code : forall cond c v m st,
-  in_code c v ->
-  FFinish st = f_step_iter cond c (FContinue v) m ->
-  in_code c st.
-
-admit.
-Admitted.
-
 Lemma app_cons : forall A l (a:A), a::l = (a::nil) ++ l.
 induction l; eauto.
 Qed.
@@ -1553,6 +1545,327 @@ intros.
 eapply list_postfix.
 eassumption.
 eapply program_post_length; eauto.
+Qed.
+
+Definition in_code_prg_sfx c v :=
+   exists lst, cenv_program c = lst ++ v.
+
+Lemma stay_prg_sfx : forall c v v2,
+  (in_code_prg_sfx c (venv_prg_sfx v) -> in_code_prg_sfx c (venv_prg_sfx v2)) ->
+  (in_code c v -> in_code c v2).
+unfold in_code; unfold in_code_prg_sfx.
+auto.
+Qed.
+
+Lemma stay_in_code_drop : forall c v,
+  in_code_prg_sfx c v ->
+  in_code_prg_sfx c (drop_one_element v).
+destruct v.
+auto.
+simpl.
+unfold in_code_prg_sfx.
+intros.
+elim H; clear H; intros.
+exists (x ++ (i::nil)).
+rewrite <- app_assoc.
+rewrite <- app_cons.
+auto.
+Qed.
+
+Lemma drop_nothing : forall lst, drop_bytes lst 0 = lst.
+destruct lst.
+auto.
+simpl.
+destruct i;auto.
+Qed.
+
+Lemma drop_one : forall l, exists lst, lst ++ drop_bytes l 1%N = l.
+destruct l.
+exists nil.
+auto.
+
+simpl.
+rewrite drop_nothing.
+exists (i::nil).
+destruct i; auto.
+Qed.
+
+Definition not_push i := match i with
+ | PUSH1 _ => False
+ | PUSH2 _ => False
+ | _ => True
+end.
+
+Lemma drop_not_push : forall l i, not_push i -> i :: drop_bytes (i::l) 1 = i::l.
+destruct i; simpl; try rewrite drop_nothing; auto.
+Qed.
+
+
+Lemma drop_two : forall l, exists lst, lst ++ drop_bytes l 2%N = l.
+destruct l.
+exists nil;auto.
+
+simpl.
+rewrite drop_nothing.
+destruct l.
+simpl.
+exists (i::nil); destruct i; simpl; auto.
+simpl.
+destruct i; try rewrite drop_nothing;
+  try (eexists (_ :: nil); simpl; eauto; omega);
+  destruct i0; try (eexists (_ :: _ :: nil); simpl; eauto; omega).
+Qed.
+
+Lemma drop_one_cases :
+  forall a l, drop_bytes (a :: l) 1%N = l.
+simpl.
+intros.
+rewrite drop_nothing.
+destruct a; auto.
+Qed.
+
+Lemma drop_bytes_test : forall code n,
+  (fun code n dropped => exists lst, code = lst ++ dropped) code n (drop_bytes code n).
+apply drop_bytes_ind; intros.
+rewrite e.
+exists nil.
+auto.
+
+elim H; clear H; intros.
+replace (PUSH1 v :: tl) with (PUSH1 v :: x ++ drop_bytes tl (bytes - 2)).
+exists (PUSH1 v :: x).
+simpl.
+auto.
+rewrite <- H.
+auto.
+
+elim H; clear H; intros.
+replace (PUSH2 v :: tl) with (PUSH2 v :: x ++ drop_bytes tl (bytes - 3)).
+exists (PUSH2 v :: x).
+simpl.
+auto.
+rewrite <- H.
+auto.
+
+elim H; clear H; intros.
+replace (_x :: tl) with (_x :: x ++ drop_bytes tl (bytes - 1)).
+exists (_x :: x).
+simpl.
+auto.
+rewrite <- H.
+auto.
+
+exists nil.
+auto.
+Qed.
+
+Lemma drop_bytes_good : forall code n,
+  exists lst, code = lst ++ drop_bytes code n.
+intros.
+eelim drop_bytes_test.
+eauto.
+Qed.
+
+Lemma stay_in_code_jump : forall n c,
+  in_code_prg_sfx c (drop_bytes (cenv_program c) n).
+
+unfold in_code_prg_sfx.
+intros.
+eapply drop_bytes_good.
+Qed.
+
+Lemma stay_in_code_step : forall cond c v st,
+  in_code c v ->
+  FContinue st = f_step cond c (FContinue v) ->
+  in_code c st.
+unfold f_step.
+intros cond c v st.
+
+elim (bool_tf (cond v)).
+intros.
+rewrite H in H1.
+destruct (venv_prg_sfx v).
+inversion H1.
+
+Ltac simple_case H1 H0:=
+  simpl in H1;
+  eapply stay_prg_sfx; try apply H0;
+  inversion H1;
+  simpl;
+  apply stay_in_code_drop.
+
+Ltac stack_case1 H1 H0:=
+  simpl in H1; unfold stack_1_1_op in H1; unfold stack_1_2_op in H1;
+  simpl in H1; destruct (venv_stack _);inversion H1; simple_case H1 H0.
+
+destruct i; try simple_case H1 H0; try stack_case1 H1 H0.
+
+simpl in H1.
+unfold sstore in H1.
+destruct (venv_stack _); try destruct l0;inversion H1; try simple_case H1 H0.
+
+simpl in H1.
+destruct (venv_stack_top v).
+simpl in H1.
+
+destruct venv_first_instruction.
+destruct i; inversion H1.
+
+eapply stay_prg_sfx; try apply H0.
+simpl.
+
+intros.
+
+apply stay_in_code_jump.
+inversion H1.
+inversion H1.
+
+simpl in H1.
+destruct (venv_stack v).
+inversion H1.
+
+destruct l0.
+
+inversion H1.
+
+elim (bool_tf (word_iszero w0)); intros.
+rewrite H2 in H1.
+simpl in H1.
+
+destruct venv_first_instruction.
+destruct i; inversion H1.
+
+eapply stay_prg_sfx; try apply H0.
+simpl.
+
+intros.
+
+apply stay_in_code_jump.
+
+inversion H1.
+rewrite H2 in H1.
+
+eapply stay_prg_sfx; try apply H0.
+
+inversion H1.
+simpl.
+apply stay_in_code_drop.
+
+  simpl in H1; unfold stack_2_1_op in H1;
+    simpl in H1; destruct (venv_stack v);
+    inversion H1; destruct l0;
+    inversion H1; simple_case H1 H0.
+
+  simpl in H1; unfold stack_2_1_op in H1;
+    simpl in H1; destruct (venv_stack v);
+    inversion H1; destruct l0;
+    inversion H1; simple_case H1 H0.
+
+simpl in H1.
+
+destruct (venv_stack v); inversion H1.
+destruct l0; inversion H1.
+destruct l0; inversion H1.
+destruct l0; inversion H1.
+destruct l0; inversion H1.
+destruct l0; inversion H1.
+destruct l0; inversion H1.
+
+elim (bool_tf (word_smaller (venv_balance v (cenv_this c)) w1));
+  intros Hstuck; rewrite Hstuck in H9.
+inversion H9.
+inversion H9.
+
+  simpl in H1; unfold stack_2_1_op in H1;
+    simpl in H1; destruct (venv_stack v);
+    inversion H1; destruct l0;
+    inversion H1; simple_case H1 H0.
+  simpl in H1; unfold stack_2_1_op in H1;
+    simpl in H1; destruct (venv_stack v);
+    inversion H1; destruct l0;
+    inversion H1; simple_case H1 H0.
+
+intro.
+rewrite H.
+intros.
+
+inversion H1.
+Qed.
+
+Lemma get_prev_state : forall cond c m v st,
+  FFinish st = f_step_iter cond c v m ->
+  v = FFinish st \/ exists vv, v = FContinue vv.
+induction m.
+intros.
+simpl in H.
+left; auto.
+intros.
+unfold f_step_iter in H; fold f_step_iter in H.
+eelim IHm; try eassumption; intros.
+destruct v.
+simpl in H0; inversion H0.
+simpl in H0; inversion H0.
+simpl in H0.
+elim (bool_tf (cond v)); intros.
+rewrite H1 in H0.
+destruct (venv_prg_sfx v).
+inversion H0.
+destruct (instruction_sem v c i).
+inversion H0.
+destruct c0; destruct o; inversion H0.
+inversion H0.
+rewrite H1 in H0.
+inversion H0.
+right.
+exists st.
+auto.
+simpl in H0.
+left; auto.
+elim H0; clear H0; intros.
+
+eelim previous_step; try apply H0; intros.
+right.
+eauto.
+Qed.
+
+Lemma did_finish : forall cond c v st,
+  f_step cond c (FContinue v) = FFinish st ->
+  v = st.
+intros.
+simpl in H.
+elim (bool_tf (cond v)); intros.
+rewrite H0 in H.
+destruct (venv_prg_sfx v).
+inversion H.
+destruct (instruction_sem v c i).
+inversion H.
+destruct c0; destruct o; inversion H.
+inversion H.
+rewrite H0 in H.
+inversion H.
+auto.
+Qed.
+
+Lemma stay_in_code : forall cond c m v st,
+  in_code c v ->
+  FFinish st = f_step_iter cond c (FContinue v) m ->
+  in_code c st.
+induction m; intros.
+simpl in H0.
+inversion H0.
+
+unfold f_step_iter in H0; fold f_step_iter in H0.
+
+eelim get_prev_state; try apply H0; intros.
+
+rewrite <- (did_finish _ _ _ _ H1).
+auto.
+
+elim H1; clear H1; intros.
+rewrite H1 in H0.
+
+eapply IHm; try apply H0.
+eapply stay_in_code_step; eauto.
 Qed.
 
 (* Needs to specify that it stays in fragment *)
